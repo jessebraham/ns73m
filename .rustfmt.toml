@@ -1,0 +1,3 @@
+max_width = 80
+# this feature requires nightly
+wrap_comments = true
