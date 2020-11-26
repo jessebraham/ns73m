@@ -70,6 +70,22 @@ pub enum ChargePump {
     Cp80uA,
 }
 
+/// Driver error types
+#[derive(Copy, Clone, Debug)]
+pub enum Error<E> {
+    /// Output Pin Error
+    OutputPinError(E),
+
+    /// Delay Error
+    DelayError,
+}
+
+impl<E> From<E> for Error<E> {
+    fn from(err: E) -> Error<E> {
+        Error::OutputPinError(err)
+    }
+}
+
 /// NS73M driver
 pub struct NS73M<'a, P, E, D>
 where
@@ -111,6 +127,149 @@ where
             delay,
             regs: [0u8; 14],
         }
+    }
+
+    /// Initialize the device.
+    pub fn init(&mut self) -> Result<&mut Self, Error<E>> {
+        // Reset the internal register state.
+        self.reset_registers();
+
+        // Unlatch the transmitter.
+        self.la.try_set_low()?;
+
+        // The I2C or the 3-wire bus mode can be selectable by the level of Pin
+        // "IIC" as:
+        //   "IIC" = HIGH(VDD) -> I2C mode
+        //   "IIC" = LOW(0V)   -> 3-wire mode
+        self.iic.try_set_low()?;
+
+        Ok(self)
+    }
+
+    /// Begin broadcasting.
+    pub fn begin(&mut self) -> Result<(), Error<E>> {
+        self.reset_registers();
+        self.reset()?;
+
+        self.pilot_tone(Mode::Enabled)?;
+        self.unlock_detect(Mode::Enabled)?;
+        self.forced_subcarrier(Mode::Disabled)?;
+        self.power_on()?;
+        self.unmute()?;
+        self.pre_emphasis(PreEmphasis::Pe50us)?;
+        self.reset()?;
+
+        Ok(())
+    }
+
+    /// Power the device on.
+    pub fn power_on(&mut self) -> Result<(), Error<E>> {
+        self.regs[0] |= registers::R0::PE.bits(); // ON = 1
+        self.regs[0] &= !registers::R0::PDX.bits(); // ON = 0
+        self.send(registers::REG0, self.regs[0])?;
+
+        Ok(())
+    }
+
+    /// Power the device off.
+    pub fn power_off(&mut self) -> Result<(), Error<E>> {
+        self.regs[0] &= !registers::R0::PE.bits(); // OFF = 0
+        self.regs[0] |= registers::R0::PDX.bits(); // OFF = 1
+        self.send(registers::REG0, self.regs[0])?;
+
+        Ok(())
+    }
+
+    /// Mute the device.
+    pub fn mute(&mut self) -> Result<(), Error<E>> {
+        self.regs[0] |= registers::R0::MUTE.bits();
+        self.send(registers::REG0, self.regs[0])?;
+
+        Ok(())
+    }
+
+    /// Unmute the device.
+    pub fn unmute(&mut self) -> Result<(), Error<E>> {
+        self.regs[0] &= !registers::R0::MUTE.bits();
+        self.send(registers::REG0, self.regs[0])?;
+
+        Ok(())
+    }
+
+    /// Set the pre-emphasis.
+    pub fn pre_emphasis(&mut self, pe: PreEmphasis) -> Result<(), Error<E>> {
+        match pe {
+            PreEmphasis::Disabled => {
+                self.regs[0] |= registers::R0::PE.bits(); // OFF = 1
+            }
+            PreEmphasis::Pe50us => {
+                self.regs[0] &= !registers::R0::PE.bits(); // ON = 0
+                self.regs[0] &= !registers::R0::EMS.bits(); // 50μs = 0
+            }
+            PreEmphasis::Pe75us => {
+                self.regs[0] &= !registers::R0::PE.bits(); // ON = 0
+                self.regs[0] |= registers::R0::EMS.bits(); // 75μs = 0
+            }
+        }
+
+        self.send(registers::REG0, self.regs[0])?;
+
+        Ok(())
+    }
+
+    /// Set the mode for the pilot tone.
+    pub fn pilot_tone(&mut self, mode: Mode) -> Result<(), Error<E>> {
+        match mode {
+            Mode::Enabled => {
+                self.regs[1] &= !registers::R1::PLT.bits(); // ON = 0
+            }
+            Mode::Disabled => {
+                self.regs[1] |= registers::R1::PLT.bits(); // OFF = 1
+            }
+        }
+
+        self.send(registers::REG1, self.regs[1])?;
+
+        Ok(())
+    }
+
+    /// Force the subcarrier.
+    pub fn forced_subcarrier(&mut self, mode: Mode) -> Result<(), Error<E>> {
+        match mode {
+            Mode::Enabled => {
+                self.regs[1] &= !registers::R1::SUBC.bits(); // ON = 0
+            }
+            Mode::Disabled => {
+                self.regs[1] |= registers::R1::SUBC.bits(); // OFF = 1
+            }
+        }
+
+        self.send(registers::REG1, self.regs[1])?;
+
+        Ok(())
+    }
+
+    /// Reset the device.
+    pub fn reset(&mut self) -> Result<(), Error<E>> {
+        self.send(registers::REG14, 0x05)?;
+
+        Ok(())
+    }
+
+    /// Unlock detection.
+    pub fn unlock_detect(&mut self, mode: Mode) -> Result<(), Error<E>> {
+        match mode {
+            Mode::Enabled => {
+                self.regs[2] |= registers::R2::ULD.bits();
+            }
+            Mode::Disabled => {
+                self.regs[2] &= !registers::R2::ULD.bits();
+            }
+        }
+
+        self.send(registers::REG2, self.regs[2])?;
+
+        Ok(())
     }
 
     //
