@@ -10,81 +10,10 @@ use hal::blocking::delay::DelayUs;
 use hal::digital::OutputPin;
 
 mod registers;
-
-/// Generic enabled/disabled modes
-#[derive(Copy, Clone, Debug)]
-pub enum Mode {
-    /// Option is disabled
-    Disabled,
-
-    /// Option is enabled
-    Enabled,
-}
-
-/// Pre-emphasis values
-#[derive(Copy, Clone, Debug)]
-pub enum PreEmphasis {
-    /// No pre-emphasis
-    Disabled,
-
-    /// European country (50μs)
-    Pe50us,
-
-    /// Other country, like USA (75μs)
-    Pe75us,
-}
-
-/// Audio input level values
-#[derive(Copy, Clone, Debug)]
-pub enum InputLevel {
-    /// Low input volume (100mV)
-    Low,
-
-    /// Medium input volume (140mV)
-    Medium,
-
-    /// High input volume (200mV)
-    High,
-}
-
-/// Transmit power level values
-#[derive(Copy, Clone, Debug)]
-pub enum TransmitPowerLevel {
-    /// Low power output (0.5mW)
-    Low,
-
-    /// Medium power output (1.0mW)
-    Medium,
-
-    /// High power output (2.0mW)
-    High,
-}
-
-/// Charge pumps values
-#[derive(Copy, Clone, Debug)]
-pub enum ChargePump {
-    /// Charge pumps at 1.25μA
-    Cp1_25uA,
-
-    /// Charge pumps at 80μA
-    Cp80uA,
-}
-
-/// Driver error types
-#[derive(Copy, Clone, Debug)]
-pub enum Error<E> {
-    /// Output Pin Error
-    OutputPinError(E),
-
-    /// Delay Error
-    DelayError,
-}
-
-impl<E> From<E> for Error<E> {
-    fn from(err: E) -> Error<E> {
-        Error::OutputPinError(err)
-    }
-}
+use registers::*;
+pub use registers::{
+    ChargePump, InputLevel, Mode, PreEmphasis, TransmitPowerLevel,
+};
 
 /// NS73M driver
 pub struct NS73M<'a, P, E, D>
@@ -320,5 +249,21 @@ where
         self.ck.try_set_high()?;
 
         Ok(())
+    }
+}
+
+/// Driver error types
+#[derive(Copy, Clone, Debug)]
+pub enum Error<E> {
+    /// Output Pin Error
+    OutputPinError(E),
+
+    /// Delay Error
+    DelayError,
+}
+
+impl<E> From<E> for Error<E> {
+    fn from(err: E) -> Error<E> {
+        Error::OutputPinError(err)
     }
 }
