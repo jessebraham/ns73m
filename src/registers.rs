@@ -1,3 +1,5 @@
+use core::convert::TryFrom;
+
 use bitflags::bitflags;
 
 // Register addresses
@@ -110,11 +112,20 @@ pub enum FrequencyBand {
     Band3 = 0x3,
 }
 
-impl From<u64> for FrequencyBand {
-    fn from(frequency: u64) -> Self {
+impl TryFrom<u64> for FrequencyBand {
+    type Error = ();
+
+    fn try_from(frequency: u64) -> Result<Self, Self::Error> {
         use FrequencyBand::*;
 
-        if frequency < 88_500_000 {
+        const MIN_FREQ: u64 = 87_500_000; // 87.5Mhz
+        const MAX_FREQ: u64 = 108_000_000; // 108MHz
+
+        if frequency < MIN_FREQ || frequency > MAX_FREQ {
+            return Err(());
+        }
+
+        let band = if frequency < 88_500_000 {
             Band3
         } else if frequency < 97_900_000 {
             Band2
@@ -122,6 +133,8 @@ impl From<u64> for FrequencyBand {
             Band1
         } else {
             Band0
-        }
+        };
+
+        Ok(band)
     }
 }

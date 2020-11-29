@@ -6,6 +6,7 @@
 
 #![no_std]
 
+use core::convert::TryFrom;
 use core::fmt::Debug;
 
 use embedded_hal::{
@@ -106,7 +107,8 @@ where
         frequency: u64,
         reset: bool,
     ) -> Result<(), Error<E>> {
-        let band = FrequencyBand::from(frequency);
+        let band = FrequencyBand::try_from(frequency)
+            .map_err(|_| Error::InvalidFrequency)?;
         self.select_band(band)?;
 
         let frequency = (frequency + 304_000) / 8_192;
@@ -310,15 +312,18 @@ where
 /// Driver error types
 #[derive(Copy, Clone, Debug)]
 pub enum Error<E> {
-    /// Output Pin Error
-    OutputPinError(E),
+    /// An error occurred while changing pin state
+    PinError(E),
 
-    /// Delay Error
+    /// An error occurred while using the delay peripheral
     DelayError,
+
+    /// Invalid frequency was provided
+    InvalidFrequency,
 }
 
 impl<E> From<E> for Error<E> {
     fn from(err: E) -> Error<E> {
-        Error::OutputPinError(err)
+        Error::PinError(err)
     }
 }
