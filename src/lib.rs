@@ -83,10 +83,10 @@ where
         self.reset_registers();
         self.reset()?;
 
-        self.pilot_tone(Mode::Enabled)?;
+        self.pilot_tone(true)?;
         self.transmit_power_level(TransmitPowerLevel::Medium)?;
-        self.unlock_detect(Mode::Enabled)?;
-        self.forced_subcarrier(Mode::Disabled)?;
+        self.unlock_detect(true)?;
+        self.forced_subcarrier(false)?;
         self.tune_to(frequency, false)?;
         self.power_on()?;
         self.unmute()?;
@@ -106,9 +106,9 @@ where
         let band = FrequencyBand::from(frequency);
         self.select_band(band)?;
 
-        let frequency = ((frequency + 304_000) / 8_192) as u8;
-        self.regs[3] = frequency & 0xFF;
-        self.regs[4] = frequency >> 8;
+        let frequency = (frequency + 304_000) / 8_192;
+        self.regs[3] = (frequency & 0xFF) as u8;
+        self.regs[4] = (frequency >> 8) as u8;
 
         self.charge_pump(ChargePump::Cp80uA)?;
         self.send(REG3, self.regs[3])?;
@@ -188,22 +188,22 @@ where
         Ok(())
     }
 
-    /// Set the mode for the pilot tone.
-    pub fn pilot_tone(&mut self, mode: Mode) -> Result<(), Error<E>> {
-        match mode {
-            Mode::Enabled => self.regs[1] &= !R1::PLT.bits(), // ON = 0
-            Mode::Disabled => self.regs[1] |= R1::PLT.bits(), // OFF = 1
+    /// Enable or disable the pilot tone.
+    pub fn pilot_tone(&mut self, enabled: bool) -> Result<(), Error<E>> {
+        match enabled {
+            true => self.regs[1] &= !R1::PLT.bits(), // ON = 0
+            false => self.regs[1] |= R1::PLT.bits(), // OFF = 1
         }
         self.send(REG1, self.regs[1])?;
 
         Ok(())
     }
 
-    /// Force the subcarrier.
-    pub fn forced_subcarrier(&mut self, mode: Mode) -> Result<(), Error<E>> {
-        match mode {
-            Mode::Enabled => self.regs[1] &= !R1::SUBC.bits(), // ON = 0
-            Mode::Disabled => self.regs[1] |= R1::SUBC.bits(), // OFF = 1
+    /// Enable or disable the forced subcarrier setting.
+    pub fn forced_subcarrier(&mut self, enabled: bool) -> Result<(), Error<E>> {
+        match enabled {
+            true => self.regs[1] &= !R1::SUBC.bits(), // ON = 0
+            false => self.regs[1] |= R1::SUBC.bits(), // OFF = 1
         }
         self.send(REG1, self.regs[1])?;
 
@@ -229,11 +229,11 @@ where
         Ok(())
     }
 
-    /// Unlock detection.
-    pub fn unlock_detect(&mut self, mode: Mode) -> Result<(), Error<E>> {
-        match mode {
-            Mode::Enabled => self.regs[2] |= R2::ULD.bits(), // ON = 1
-            Mode::Disabled => self.regs[2] &= !R2::ULD.bits(), // OFF = 0
+    /// Enable or disable unlock detection.
+    pub fn unlock_detect(&mut self, enabled: bool) -> Result<(), Error<E>> {
+        match enabled {
+            true => self.regs[2] |= R2::ULD.bits(), // ON = 1
+            false => self.regs[2] &= !R2::ULD.bits(), // OFF = 0
         }
         self.send(REG2, self.regs[2])?;
 

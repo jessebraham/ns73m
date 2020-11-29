@@ -53,16 +53,6 @@ bitflags! {
     }
 }
 
-/// Generic operating modes
-#[derive(Copy, Clone, Debug)]
-pub enum Mode {
-    /// Feature is disabled
-    Disabled,
-
-    /// Feature is enabled
-    Enabled,
-}
-
 /// Pre-emphasis values
 #[derive(Copy, Clone, Debug)]
 pub enum PreEmphasis {
