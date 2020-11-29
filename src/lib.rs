@@ -18,6 +18,10 @@ mod registers;
 use registers::*;
 pub use registers::{ChargePump, InputLevel, PreEmphasis, TransmitPowerLevel};
 
+/// `Error` will always take `E` as a type argument, so simplify our `Result`
+/// type to improve code clarity.
+pub type Result<T, E> = core::result::Result<T, Error<E>>;
+
 /// NS73M driver
 pub struct NS73M<'a, CK, DA, LA, IIC, E, D>
 where
@@ -54,36 +58,40 @@ where
     IIC: OutputPin<Error = E>,
     D: DelayUs<u8>,
 {
-    /// Construct a new driver without causing any side-effects.
-    pub fn new(ck: CK, da: DA, la: LA, iic: IIC, delay: &'a mut D) -> Self {
-        Self {
+    /// Construct a new driver and initialize the device.
+    pub fn new(
+        ck: CK,
+        da: DA,
+        la: LA,
+        iic: IIC,
+        delay: &'a mut D,
+    ) -> Result<Self, E> {
+        let mut self_ = Self {
             ck,
             da,
             la,
             iic,
             delay,
             regs: [0u8; 14],
-        }
-    }
-
-    /// Initialize the device.
-    pub fn init(&mut self) -> Result<&mut Self, Error<E>> {
-        self.la.try_set_low()?;
+        };
 
         // Reset the internal register state to their default values.
-        self.reset_registers();
+        self_.reset_registers();
+
+        // Unlatch the transmitter.
+        self_.la.try_set_low()?;
 
         // The I2C or the 3-wire bus mode can be selectable by the level of Pin
         // "IIC" as:
         //   "IIC" = HIGH(VDD) -> I2C mode
         //   "IIC" = LOW(0V)   -> 3-wire mode
-        self.iic.try_set_low()?;
+        self_.iic.try_set_low()?;
 
-        Ok(self)
+        Ok(self_)
     }
 
-    /// Begin broadcasting.
-    pub fn begin(&mut self, frequency: u64) -> Result<(), Error<E>> {
+    /// Begin broadcasting at a specified frequency.
+    pub fn begin(&mut self, frequency: u64) -> Result<(), E> {
         self.reset_registers();
         self.reset()?;
 
@@ -102,11 +110,7 @@ where
     }
 
     /// Tune to the specified frequency.
-    pub fn tune_to(
-        &mut self,
-        frequency: u64,
-        reset: bool,
-    ) -> Result<(), Error<E>> {
+    pub fn tune_to(&mut self, frequency: u64, reset: bool) -> Result<(), E> {
         let band = FrequencyBand::try_from(frequency)
             .map_err(|_| Error::InvalidFrequency)?;
         self.select_band(band)?;
@@ -128,7 +132,7 @@ where
     }
 
     /// Power the device on.
-    pub fn power_on(&mut self) -> Result<(), Error<E>> {
+    pub fn power_on(&mut self) -> Result<(), E> {
         self.regs[0] |= R0::PE.bits(); // ON = 1
         self.regs[0] &= !R0::PDX.bits(); // ON = 0
         self.send(REG0, self.regs[0])?;
@@ -137,7 +141,7 @@ where
     }
 
     /// Power the device off.
-    pub fn power_off(&mut self) -> Result<(), Error<E>> {
+    pub fn power_off(&mut self) -> Result<(), E> {
         self.regs[0] &= !R0::PE.bits(); // OFF = 0
         self.regs[0] |= R0::PDX.bits(); // OFF = 1
         self.send(REG0, self.regs[0])?;
@@ -146,7 +150,7 @@ where
     }
 
     /// Mute the device.
-    pub fn mute(&mut self) -> Result<(), Error<E>> {
+    pub fn mute(&mut self) -> Result<(), E> {
         self.regs[0] |= R0::MUTE.bits();
         self.send(REG0, self.regs[0])?;
 
@@ -154,7 +158,7 @@ where
     }
 
     /// Unmute the device.
-    pub fn unmute(&mut self) -> Result<(), Error<E>> {
+    pub fn unmute(&mut self) -> Result<(), E> {
         self.regs[0] &= !R0::MUTE.bits();
         self.send(REG0, self.regs[0])?;
 
@@ -162,7 +166,7 @@ where
     }
 
     /// Set the pre-emphasis.
-    pub fn pre_emphasis(&mut self, pre: PreEmphasis) -> Result<(), Error<E>> {
+    pub fn pre_emphasis(&mut self, pre: PreEmphasis) -> Result<(), E> {
         match pre {
             PreEmphasis::Disabled => {
                 self.regs[0] |= R0::PE.bits(); // OFF = 1
@@ -182,10 +186,7 @@ where
     }
 
     /// Configure the audio input level to get 100% modulation.
-    pub fn audio_input_level(
-        &mut self,
-        level: InputLevel,
-    ) -> Result<(), Error<E>> {
+    pub fn audio_input_level(&mut self, level: InputLevel) -> Result<(), E> {
         self.regs[0] &= !R0::AG.bits(); // mask off register
         self.regs[0] |= level as u8;
         self.send(REG0, self.regs[0])?;
@@ -194,10 +195,11 @@ where
     }
 
     /// Enable or disable the pilot tone.
-    pub fn pilot_tone(&mut self, enabled: bool) -> Result<(), Error<E>> {
-        match enabled {
-            true => self.regs[1] &= !R1::PLT.bits(), // ON = 0
-            false => self.regs[1] |= R1::PLT.bits(), // OFF = 1
+    pub fn pilot_tone(&mut self, enabled: bool) -> Result<(), E> {
+        if enabled {
+            self.regs[1] &= !R1::PLT.bits(); // ON = 0
+        } else {
+            self.regs[1] |= R1::PLT.bits(); // OFF = 1
         }
         self.send(REG1, self.regs[1])?;
 
@@ -205,18 +207,19 @@ where
     }
 
     /// Enable or disable the forced subcarrier setting.
-    pub fn forced_subcarrier(&mut self, enabled: bool) -> Result<(), Error<E>> {
-        match enabled {
-            true => self.regs[1] &= !R1::SUBC.bits(), // ON = 0
-            false => self.regs[1] |= R1::SUBC.bits(), // OFF = 1
+    pub fn forced_subcarrier(&mut self, enabled: bool) -> Result<(), E> {
+        if enabled {
+            self.regs[1] &= !R1::SUBC.bits(); // ON = 0
+        } else {
+            self.regs[1] |= R1::SUBC.bits(); // OFF = 1
         }
         self.send(REG1, self.regs[1])?;
 
         Ok(())
     }
 
-    /// Reset the device.
-    pub fn reset(&mut self) -> Result<(), Error<E>> {
+    /// Soft-reset the device.
+    pub fn reset(&mut self) -> Result<(), E> {
         self.send(REG14, 0x05)?;
 
         Ok(())
@@ -226,7 +229,7 @@ where
     pub fn transmit_power_level(
         &mut self,
         level: TransmitPowerLevel,
-    ) -> Result<(), Error<E>> {
+    ) -> Result<(), E> {
         self.regs[2] &= !R2::PL.bits(); // mask off register
         self.regs[2] |= level as u8;
         self.send(REG2, self.regs[2])?;
@@ -235,10 +238,11 @@ where
     }
 
     /// Enable or disable unlock detection.
-    pub fn unlock_detect(&mut self, enabled: bool) -> Result<(), Error<E>> {
-        match enabled {
-            true => self.regs[2] |= R2::ULD.bits(), // ON = 1
-            false => self.regs[2] &= !R2::ULD.bits(), // OFF = 0
+    pub fn unlock_detect(&mut self, enabled: bool) -> Result<(), E> {
+        if enabled {
+            self.regs[2] |= R2::ULD.bits(); // ON = 1
+        } else {
+            self.regs[2] &= !R2::ULD.bits(); // OFF = 0
         }
         self.send(REG2, self.regs[2])?;
 
@@ -246,7 +250,7 @@ where
     }
 
     /// Set the charge pump current and select the clock generator.
-    pub fn charge_pump(&mut self, cp: ChargePump) -> Result<(), Error<E>> {
+    pub fn charge_pump(&mut self, cp: ChargePump) -> Result<(), E> {
         self.regs[6] &= !R6::CIA.bits(); // mask off register
         self.regs[6] |= cp as u8 | R6::CIB.bits();
         self.send(REG6, self.regs[6])?;
@@ -268,7 +272,7 @@ where
         self.regs[8] = 0x1B;
     }
 
-    fn select_band(&mut self, band: FrequencyBand) -> Result<(), Error<E>> {
+    fn select_band(&mut self, band: FrequencyBand) -> Result<(), E> {
         self.regs[8] &= !R8::CEX.bits(); // mask off register
         self.regs[8] |= band as u8;
         self.send(REG8, self.regs[8])?;
@@ -276,7 +280,7 @@ where
         Ok(())
     }
 
-    fn send(&mut self, reg: u8, data: u8) -> Result<(), Error<E>> {
+    fn send(&mut self, reg: u8, data: u8) -> Result<(), E> {
         self.la.try_set_low()?;
 
         // Send the register address (4 bits)
@@ -300,7 +304,7 @@ where
         Ok(())
     }
 
-    fn send_bit(&mut self, bit: bool) -> Result<(), Error<E>> {
+    fn send_bit(&mut self, bit: bool) -> Result<(), E> {
         self.ck.try_set_low()?;
         self.da.try_set_state(PinState::from(bit))?;
         self.ck.try_set_high()?;
