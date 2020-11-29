@@ -6,36 +6,37 @@
 
 #![no_std]
 
-pub use embedded_hal as hal;
-
 use core::fmt::Debug;
 
-use hal::blocking::delay::DelayUs;
-use hal::digital::{OutputPin, PinState};
+use embedded_hal::{
+    blocking::delay::DelayUs,
+    digital::{OutputPin, PinState},
+};
 
 mod registers;
 use registers::*;
-pub use registers::{
-    ChargePump, InputLevel, Mode, PreEmphasis, TransmitPowerLevel,
-};
+pub use registers::{ChargePump, InputLevel, PreEmphasis, TransmitPowerLevel};
 
 /// NS73M driver
-pub struct NS73M<'a, P, E, D>
+pub struct NS73M<'a, CK, DA, LA, IIC, E, D>
 where
-    P: OutputPin<Error = E>,
+    CK: OutputPin<Error = E>,
+    DA: OutputPin<Error = E>,
+    LA: OutputPin<Error = E>,
+    IIC: OutputPin<Error = E>,
     D: DelayUs<u8>,
 {
     /// Clock pin for I/O input
-    ck: P,
+    ck: CK,
 
     /// Data pin I/O for interface
-    da: P,
+    da: DA,
 
     /// Latch pin for 3-wire or Address pin for I²C
-    la: P,
+    la: LA,
 
     /// I2C or 3-wire interface selector pin
-    iic: P,
+    iic: IIC,
 
     /// Delay peripheral reference
     delay: &'a mut D,
@@ -44,14 +45,16 @@ where
     regs: [u8; 14],
 }
 
-impl<'a, P, E, D> NS73M<'a, P, E, D>
+impl<'a, CK, DA, LA, IIC, E, D> NS73M<'a, CK, DA, LA, IIC, E, D>
 where
-    E: Debug,
-    P: OutputPin<Error = E>,
+    CK: OutputPin<Error = E>,
+    DA: OutputPin<Error = E>,
+    LA: OutputPin<Error = E>,
+    IIC: OutputPin<Error = E>,
     D: DelayUs<u8>,
 {
     /// Construct a new driver without causing any side-effects.
-    pub fn new(ck: P, da: P, la: P, iic: P, delay: &'a mut D) -> Self {
+    pub fn new(ck: CK, da: DA, la: LA, iic: IIC, delay: &'a mut D) -> Self {
         Self {
             ck,
             da,
